@@ -1,8 +1,8 @@
-# Sample gRPC Node.js News Server
+# Sample gRPC Rust News Server
 
 ## Overview
 
-This repository contains a gRPC-based Node.js server implementing CRUD operations for a news list. It features a batched `GetNews` API, allowing efficient retrieval of multiple news items.
+This repository contains a gRPC-based Rust server implementing CRUD operations for a news list. It features a batched `GetNews` API, allowing efficient retrieval of multiple news items.
 
 ### Features
 
