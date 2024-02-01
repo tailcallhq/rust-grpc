@@ -1,18 +1,11 @@
 use tonic::{transport::Server as TonicServer, Response, Status};
 
-use news::news_service_server::NewsService;
-use news::{News, NewsId, NewsList, MultipleNewsId};
-use std::sync::{Arc, Mutex};
-use http_body_util::BodyExt;
-use tower::make::Shared;
 use crate::news::news_service_server::NewsServiceServer;
 use anyhow::Result;
-
-const FILE_DESCRIPTOR_SET: &[u8] = include_bytes!(concat!(
-env!("CARGO_MANIFEST_DIR"),
-"/descriptor_set.bin"
-));
-
+use news::news_service_server::NewsService;
+use news::{MultipleNewsId, News, NewsId, NewsList};
+use std::sync::{Arc, Mutex};
+use tower::make::Shared;
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
 }
@@ -25,11 +18,36 @@ pub struct MyNewsService {
 impl MyNewsService {
     fn new() -> MyNewsService {
         let news = vec![
-            News { id: 1, title: "Note 1".into(), body: "Content 1".into(), post_image: "Post image 1".into() },
-            News { id: 2, title: "Note 2".into(), body: "Content 2".into(), post_image: "Post image 2".into() },
-            News { id: 3, title: "Note 3".into(), body: "Content 3".into(), post_image: "Post image 3".into() },
-            News { id: 4, title: "Note 4".into(), body: "Content 4".into(), post_image: "Post image 4".into() },
-            News { id: 5, title: "Note 5".into(), body: "Content 5".into(), post_image: "Post image 5".into() },
+            News {
+                id: 1,
+                title: "Note 1".into(),
+                body: "Content 1".into(),
+                post_image: "Post image 1".into(),
+            },
+            News {
+                id: 2,
+                title: "Note 2".into(),
+                body: "Content 2".into(),
+                post_image: "Post image 2".into(),
+            },
+            News {
+                id: 3,
+                title: "Note 3".into(),
+                body: "Content 3".into(),
+                post_image: "Post image 3".into(),
+            },
+            News {
+                id: 4,
+                title: "Note 4".into(),
+                body: "Content 4".into(),
+                post_image: "Post image 4".into(),
+            },
+            News {
+                id: 5,
+                title: "Note 5".into(),
+                body: "Content 5".into(),
+                post_image: "Post image 5".into(),
+            },
         ];
         MyNewsService {
             news: Arc::new(Mutex::new(news)),
@@ -44,9 +62,7 @@ impl NewsService for MyNewsService {
         _request: tonic::Request<()>,
     ) -> std::result::Result<Response<NewsList>, Status> {
         let lock = self.news.lock().unwrap();
-        let reply = NewsList {
-            news: lock.clone(),
-        };
+        let reply = NewsList { news: lock.clone() };
         Ok(Response::new(reply))
     }
 
@@ -67,9 +83,18 @@ impl NewsService for MyNewsService {
         &self,
         request: tonic::Request<MultipleNewsId>,
     ) -> std::result::Result<Response<NewsList>, Status> {
-        let ids = request.into_inner().ids.into_iter().map(|id| id.id).collect::<Vec<_>>();
+        let ids = request
+            .into_inner()
+            .ids
+            .into_iter()
+            .map(|id| id.id)
+            .collect::<Vec<_>>();
         let lock = self.news.lock().unwrap();
-        let news_items: Vec<News> = lock.iter().filter(|n| ids.contains(&n.id)).cloned().collect();
+        let news_items: Vec<News> = lock
+            .iter()
+            .filter(|n| ids.contains(&n.id))
+            .cloned()
+            .collect();
         Ok(Response::new(NewsList { news: news_items }))
     }
 
@@ -121,7 +146,7 @@ impl NewsService for MyNewsService {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let addr = ([127,0,0,1],50051).into();
+    let addr = ([127, 0, 0, 1], 50051).into();
 
     let news_service = MyNewsService::new();
 
