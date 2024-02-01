@@ -1,8 +1,11 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tonic::{transport::Server, Response, Status};
 
 use news::news_service_server::{NewsService, NewsServiceServer};
 use news::{News, NewsId, NewsList, MultipleNewsId};
 use std::sync::{Arc, Mutex};
+use crate::news::news_service_client::NewsServiceClient;
+
 const FILE_DESCRIPTOR_SET: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/descriptor_set.bin"
@@ -36,7 +39,7 @@ impl MyNewsService {
 impl NewsService for MyNewsService {
     async fn get_all_news(
         &self,
-        request: tonic::Request<()>,
+        _request: tonic::Request<()>,
     ) -> std::result::Result<tonic::Response<NewsList>, tonic::Status> {
         println!("1");
         let lock = self.news.lock().unwrap();
@@ -122,7 +125,7 @@ impl NewsService for MyNewsService {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), 50051);
 
     let news_service = MyNewsService::new();
 
@@ -133,11 +136,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .unwrap(); // idk if we need this
 
-    Server::builder()
-        .add_service(NewsServiceServer::new(news_service))
-        .add_service(reflection_service)
-        .serve(addr)
-        .await?;
+    let thread = tokio::task::spawn(async move {
+        Server::builder()
+            .add_service(NewsServiceServer::new(news_service))
+            .add_service(reflection_service)
+            .serve(addr).await.unwrap();
+    });
+
+    let mut client = NewsServiceClient::connect("http://localhost:50051").await?;
+
+    let request = tonic::Request::new(());
+
+    let response = client.get_all_news(request).await?;
+
+    println!("RESPONSE={:#?}", response);
+
+    thread.await.unwrap();
 
     Ok(())
 }
