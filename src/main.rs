@@ -6,8 +6,11 @@ use news::news_service_server::NewsService;
 use news::{MultipleNewsId, News, NewsId, NewsList};
 use std::sync::{Arc, Mutex};
 use tower::make::Shared;
+
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
+    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
+        tonic::include_file_descriptor_set!("news_descriptor");
 }
 
 #[derive(Debug, Default)]
@@ -149,11 +152,16 @@ async fn main() -> Result<()> {
     let addr = ([127, 0, 0, 1], 50051).into();
 
     let news_service = MyNewsService::new();
+    let service = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
+        .build()
+        .unwrap();
 
     println!("NewsService server listening on {}", addr);
 
     let tonic_service = TonicServer::builder()
         .add_service(NewsServiceServer::new(news_service))
+        .add_service(service)
         .into_service();
     let make_svc = Shared::new(tonic_service);
     println!("Server listening on http://{}", addr);

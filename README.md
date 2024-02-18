@@ -13,7 +13,9 @@ This repository contains a gRPC-based Rust server implementing CRUD operations f
 ## Prerequisites
 
 Before you begin, ensure you have installed:
+
 - [Rust](https://www.rust-lang.org/tools/install)
+
 ## Installation
 
 ## Running the Server
@@ -63,10 +65,18 @@ message NewsList {
 }
 ```
 
+## Reflection api
+
+The server supports reflection api by default
+
+### example
+
+`grpcurl -plaintext localhost:50051 list`
+
 ## License
 
 This project is licensed under the MIT License.
 
-* * *
+---
 
 © 2024 @ Tailcall
