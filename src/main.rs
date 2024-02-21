@@ -1,16 +1,19 @@
-use tonic::{transport::Server as TonicServer, Response, Status};
+mod server;
 
 use crate::news::news_service_server::NewsServiceServer;
+use crate::server::Builder;
 use anyhow::Result;
 use news::news_service_server::NewsService;
 use news::{MultipleNewsId, News, NewsId, NewsList};
+use prost_types::FileDescriptorSet;
+use std::fs::File;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
+use tonic::{transport::Server as TonicServer, Response, Status};
 use tower::make::Shared;
 
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
-    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
-        tonic::include_file_descriptor_set!("news_descriptor");
 }
 
 #[derive(Debug, Default)]
@@ -152,16 +155,24 @@ async fn main() -> Result<()> {
     let addr = ([127, 0, 0, 1], 50051).into();
 
     let news_service = MyNewsService::new();
-    let service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
-        .build()
-        .unwrap();
+
+    let mut file = File::open("news.proto")?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+
+    let news = protox_parse::parse("news.proto", &content)?;
+    let mut news_descriptor_set = FileDescriptorSet::default();
+    news_descriptor_set.file.push(news);
+
+    let service = Builder::configure()
+        .register_file_descriptor_set(news_descriptor_set)
+        .build()?;
 
     println!("NewsService server listening on {}", addr);
 
     let tonic_service = TonicServer::builder()
-        .add_service(NewsServiceServer::new(news_service))
         .add_service(service)
+        .add_service(NewsServiceServer::new(news_service))
         .into_service();
     let make_svc = Shared::new(tonic_service);
     println!("Server listening on http://{}", addr);
