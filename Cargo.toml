@@ -17,6 +17,7 @@ hyper-util = {version = "0.1.3",features = ["tokio"]}
 http-body-util = "0.1.0"
 anyhow = "1.0.79"
 tokio-stream = "0.1.14"
+protox-parse = "0.6.0"
 
 [build-dependencies]
 tonic-build = "0.10.2"
