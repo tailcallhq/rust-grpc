@@ -212,7 +212,9 @@ fn init_tracer() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracer()?;
+    if let Err(error) = init_tracer() {
+        eprintln!("Init Tracer error: {}", error);
+    }
 
     let addr = ([127, 0, 0, 1], 50051).into();
 

@@ -1449,6 +1449,8 @@ dependencies = [
 [[package]]
 name = "tonic-tracing-opentelemetry"
 version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d84d512c5d647751ec9444ea3d364be81b1f0b2de6edb88fe02e2cb9e133fa2"
 dependencies = [
  "futures-core",
  "futures-util",
