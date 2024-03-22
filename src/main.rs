@@ -212,7 +212,9 @@ fn init_tracer() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracer()?;
+    if std::env::var("HONEYCOMB_API_KEY").is_ok() {
+        init_tracer()?;
+    }
 
     let addr = ([127, 0, 0, 1], 50051).into();
 
@@ -230,7 +232,7 @@ async fn main() -> Result<()> {
         .add_service(service)
         .into_service();
     let make_svc = Shared::new(tonic_service);
-    println!("Server listening on http://{}", addr);
+    println!("Server listening on grpc://{}", addr);
     let server = hyper::Server::bind(&addr).serve(make_svc);
     server.await?;
 
