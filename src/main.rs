@@ -37,30 +37,35 @@ impl MyNewsService {
                 title: "Note 1".into(),
                 body: "Content 1".into(),
                 post_image: "Post image 1".into(),
+                status: 0,
             },
             News {
                 id: 2,
                 title: "Note 2".into(),
                 body: "Content 2".into(),
                 post_image: "Post image 2".into(),
+                status: 1,
             },
             News {
                 id: 3,
                 title: "Note 3".into(),
                 body: "Content 3".into(),
                 post_image: "Post image 3".into(),
+                status: 1,
             },
             News {
                 id: 4,
                 title: "Note 4".into(),
                 body: "Content 4".into(),
                 post_image: "Post image 4".into(),
+                status: 1,
             },
             News {
                 id: 5,
                 title: "Note 5".into(),
                 body: "Content 5".into(),
                 post_image: "Post image 5".into(),
+                status: 1,
             },
         ];
         MyNewsService {
