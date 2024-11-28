@@ -16,9 +16,8 @@ use tower::make::Shared;
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
 use news::{MultipleNewsId, News, NewsId, NewsList};
+use shuttle_runtime::Service;
 use tracing_subscriber::layer::SubscriberExt;
-use shuttle_runtime::{main, Service};
-use async_trait::async_trait;
 
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
@@ -224,7 +223,7 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
     }
 
     let news_service = MyNewsService::new();
-    
+
     Ok(news_service)
 }
 
@@ -244,9 +243,11 @@ impl Service for MyNewsService {
             .add_service(service)
             .into_service();
         let make_svc = Shared::new(tonic_service);
-        
+
         let server = hyper::Server::bind(&addr).serve(make_svc);
-        server.await.map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+        server
+            .await
+            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         Ok(())
     }
