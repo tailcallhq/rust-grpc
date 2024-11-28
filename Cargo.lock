@@ -1175,6 +1175,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "prost",
+ "prost-build",
  "prost-types",
  "tokio",
  "tonic",

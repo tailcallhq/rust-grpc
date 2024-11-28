@@ -37,3 +37,4 @@ gh-workflow = "*"
 [build-dependencies]
 tonic-build = "0.11.0"
 gh-workflow = "*"
+prost-build = "0.12"

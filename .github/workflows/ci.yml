@@ -43,6 +43,8 @@ jobs:
       with:
         toolchain: stable, nightly
         components: clippy, rustfmt
+    - name: Install protobuf compiler
+      run: cargo test sudo apt-get update && sudo apt-get install -y protobuf-compiler
     - name: Cargo Test
       run: cargo test --all-features --workspace
     - name: Cargo Fmt
