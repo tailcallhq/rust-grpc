@@ -24,7 +24,7 @@ Before you begin, ensure you have installed:
 Start the server with:
 
 ```bash
-cargo shuttle run
+cargo shuttle run --port 50051
 ```
 
 ## Deploying to Shuttle.dev
