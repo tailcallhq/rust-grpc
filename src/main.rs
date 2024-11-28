@@ -17,6 +17,8 @@ use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
 use news::{MultipleNewsId, News, NewsId, NewsList};
 use tracing_subscriber::layer::SubscriberExt;
+use shuttle_runtime::{main, Service};
+use async_trait::async_trait;
 
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
@@ -215,31 +217,37 @@ fn init_tracer() -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+#[shuttle_runtime::main]
+async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
     if std::env::var("HONEYCOMB_API_KEY").is_ok() {
         init_tracer()?;
     }
 
-    let addr = ([127, 0, 0, 1], 50051).into();
-
     let news_service = MyNewsService::new();
-    let service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
-        .build()
-        .unwrap();
+    
+    Ok(news_service)
+}
 
-    println!("NewsService server listening on {}", addr);
+#[async_trait::async_trait]
+impl Service for MyNewsService {
+    async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        let service = tonic_reflection::server::Builder::configure()
+            .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
+            .build()
+            .unwrap();
 
-    let tonic_service = TonicServer::builder()
-        .layer(server::OtelGrpcLayer::default())
-        .add_service(NewsServiceServer::new(news_service))
-        .add_service(service)
-        .into_service();
-    let make_svc = Shared::new(tonic_service);
-    println!("Server listening on grpc://{}", addr);
-    let server = hyper::Server::bind(&addr).serve(make_svc);
-    server.await?;
+        println!("NewsService server listening on {}", addr);
 
-    Ok(())
+        let tonic_service = TonicServer::builder()
+            .layer(server::OtelGrpcLayer::default())
+            .add_service(NewsServiceServer::new(self))
+            .add_service(service)
+            .into_service();
+        let make_svc = Shared::new(tonic_service);
+        
+        let server = hyper::Server::bind(&addr).serve(make_svc);
+        server.await.map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+
+        Ok(())
+    }
 }
