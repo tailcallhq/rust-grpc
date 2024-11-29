@@ -19,6 +19,11 @@ fn generate() {
         )
         .add_step(
             Cargo::new("test")
+                .args("sudo apt-get update && sudo apt-get install -y protobuf-compiler")
+                .name("Install protobuf compiler"),
+        )
+        .add_step(
+            Cargo::new("test")
                 .args("--all-features --workspace")
                 .name("Cargo Test"),
         )
