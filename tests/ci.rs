@@ -58,7 +58,8 @@ fn generate() {
         .add_step(Step::checkout())
         .add_step(
             Step::uses("shuttle-hq", "deploy-action", "v2")
-                .add_with(("shuttle-api-key", "${{ secrets.SHUTTLE_API_KEY }}")),
+                .add_with(("shuttle-api-key", "${{ secrets.SHUTTLE_API_KEY }}"))
+                .add_with(("project-id", "proj_tc170d7f9")),
         );
 
     Workflow::new("Build and Test")
