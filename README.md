@@ -15,15 +15,34 @@ This repository contains a gRPC-based Rust server implementing CRUD operations f
 Before you begin, ensure you have installed:
 
 - [Rust](https://www.rust-lang.org/tools/install)
+- [Shuttle CLI](https://docs.shuttle.rs/getting-started/installation)
 
 ## Installation
 
-## Running the Server
+## Running the Server Locally
 
 Start the server with:
 
 ```bash
-cargo run
+cargo shuttle run --port 50051
+```
+
+## Deploying to Shuttle.dev
+
+Deploy the server with:
+
+```bash
+cargo shuttle init
+```
+
+Follow the prompts:
+1. Select your project name
+2. Choose 'Empty (no framework)' when prompted
+
+Then deploy with:
+
+```bash
+cargo shuttle deploy
 ```
 
 ## gRPC API

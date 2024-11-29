@@ -1,3 +1,6 @@
 target/
 .idea/
 .direnv
+/target
+.shuttle*
+Secrets*.toml
