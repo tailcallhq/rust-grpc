@@ -1,0 +1,35 @@
+syntax = "proto3";
+package posts;
+
+message Post {
+  int32 id = 1;
+  int32 userId = 2;
+  string title = 3;
+  string body = 4;
+}
+
+message Filter {
+  optional int32 userId = 1;
+}
+
+message PostRequest {
+  int32 id = 1;
+}
+
+message PostList {
+  repeated Post posts = 1;
+}
+
+message PostResponse {
+  Post post = 1;
+}
+
+message DeleteResponse {}
+
+service PostService {
+  rpc ListPosts(Filter) returns (PostList);
+  rpc GetPost(PostRequest) returns (Post);
+  rpc CreatePost(Post) returns (PostResponse);
+  rpc UpdatePost(Post) returns (PostResponse);
+  rpc DeletePost(PostRequest) returns (DeleteResponse);
+}
