@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 
 fn main() {
-    // Helper function to configure tonic_build with common settings
     fn configure_tonic() -> tonic_build::Builder {
         tonic_build::configure()
-            .protoc_arg("--experimental_allow_proto3_optional") // Enable proto3 optional fields
+            .protoc_arg("--experimental_allow_proto3_optional")
             .build_server(true)
             .build_client(true)
     }
@@ -33,9 +32,4 @@ fn main() {
         .file_descriptor_set_path(out_dir.join("users_descriptor.bin"))
         .compile(&["users.proto"], &["."])
         .expect("Failed to compile users.proto");
-
-    // Set up cargo rerun-if-changed directives
-    println!("cargo:rerun-if-changed=news.proto");
-    println!("cargo:rerun-if-changed=posts.proto");
-    println!("cargo:rerun-if-changed=users.proto");
 }
