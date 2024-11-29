@@ -24,6 +24,7 @@ on:
     - opened
     - synchronize
     - reopened
+    - closed
     branches:
     - main
   push:
@@ -38,6 +39,7 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
+    - uses: arduino/setup-protoc@v3
     - name: Setup Rust Toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -51,3 +53,15 @@ jobs:
       run: cargo +nightly fmt --check
     - name: Cargo Clippy
       run: cargo +nightly clippy --all-features --workspace -- -D warnings
+  deploy:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Deploy to Shuttle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    - uses: shuttle-hq/deploy-action/deploy-action@vmain
+      with:
+        deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
