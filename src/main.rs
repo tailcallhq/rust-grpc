@@ -26,13 +26,13 @@ pub mod news {
 
 pub mod posts {
     tonic::include_proto!("posts");
-    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] = 
+    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
         tonic::include_file_descriptor_set!("posts_descriptor");
 }
 
 pub mod users {
     tonic::include_proto!("users");
-    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] = 
+    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
         tonic::include_file_descriptor_set!("users_descriptor");
 }
 
@@ -207,7 +207,8 @@ impl posts::post_service_server::PostService for MyPostService {
         let filter = request.into_inner();
         let posts = self.posts.lock().unwrap();
         let filtered = if let Some(user_id) = filter.user_id {
-            posts.iter()
+            posts
+                .iter()
                 .filter(|p| p.user_id == user_id)
                 .cloned()
                 .collect()
@@ -249,7 +250,9 @@ impl posts::post_service_server::PostService for MyPostService {
         let mut posts = self.posts.lock().unwrap();
         if let Some(post) = posts.iter_mut().find(|p| p.id == new_post.id) {
             *post = new_post.clone();
-            Ok(Response::new(posts::PostResponse { post: Some(new_post) }))
+            Ok(Response::new(posts::PostResponse {
+                post: Some(new_post),
+            }))
         } else {
             Err(Status::not_found("Post not found"))
         }
@@ -281,14 +284,15 @@ impl users::user_service_server::UserService for MyUserService {
         let users = self.users.lock().unwrap();
 
         let filtered = if !filter.ids.is_empty() {
-            users.iter()
+            users
+                .iter()
                 .filter(|u| filter.ids.contains(&u.id))
                 .cloned()
                 .collect()
         } else {
             users.clone()
         };
-        
+
         Ok(Response::new(users::UserList { users: filtered }))
     }
 
@@ -298,7 +302,7 @@ impl users::user_service_server::UserService for MyUserService {
     ) -> Result<Response<users::User>, Status> {
         let id = request.into_inner().id;
         let users = self.users.lock().unwrap();
-        
+
         if let Some(user) = users.iter().find(|u| u.id == id) {
             Ok(Response::new(user.clone()))
         } else {
@@ -312,10 +316,10 @@ impl users::user_service_server::UserService for MyUserService {
     ) -> Result<Response<users::UserResponse>, Status> {
         let mut user = request.into_inner();
         let mut users = self.users.lock().unwrap();
-        
+
         user.id = users.iter().map(|u| u.id).max().unwrap_or(0) + 1;
         users.push(user.clone());
-        
+
         Ok(Response::new(users::UserResponse { user: Some(user) }))
     }
 
@@ -330,7 +334,7 @@ impl users::user_service_server::UserService for MyUserService {
         })?;
 
         let mut users = self.users.lock().unwrap();
-        
+
         if let Some(user) = users.iter_mut().find(|u| u.id == user_id) {
             if !new_user_data.name.is_empty() {
                 user.name = new_user_data.name;
@@ -347,7 +351,7 @@ impl users::user_service_server::UserService for MyUserService {
             if !new_user_data.website.is_empty() {
                 user.website = new_user_data.website;
             }
-            
+
             if let Some(new_address) = new_user_data.address {
                 if user.address.is_none() {
                     user.address = Some(new_address);
@@ -411,9 +415,9 @@ impl users::user_service_server::UserService for MyUserService {
         let id = request.into_inner().id;
         let mut users = self.users.lock().unwrap();
         let len_before = users.len();
-        
+
         users.retain(|u| u.id != id);
-        
+
         if users.len() < len_before {
             Ok(Response::new(users::DeleteResponse {}))
         } else {
@@ -474,7 +478,6 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
         init_tracer()?;
     }
 
-    
     let composite_service = CompositeService {
         news_service: MyNewsService::new(),
         post_service: MyPostService::default(),
@@ -498,9 +501,15 @@ impl Service for CompositeService {
 
         let tonic_service = TonicServer::builder()
             .layer(server::OtelGrpcLayer::default())
-            .add_service(news::news_service_server::NewsServiceServer::new(self.news_service))
-            .add_service(posts::post_service_server::PostServiceServer::new(self.post_service))
-            .add_service(users::user_service_server::UserServiceServer::new(self.user_service))
+            .add_service(news::news_service_server::NewsServiceServer::new(
+                self.news_service,
+            ))
+            .add_service(posts::post_service_server::PostServiceServer::new(
+                self.post_service,
+            ))
+            .add_service(users::user_service_server::UserServiceServer::new(
+                self.user_service,
+            ))
             .add_service(reflection_service)
             .into_service();
 
