@@ -9,7 +9,7 @@ fn generate() {
     let build = Job::new("Build and Test")
         .permissions(Permissions::default().contents(Level::Read))
         .add_step(Step::checkout())
-        .add_step(Step::uses("arduino", "setup-protoc", "3"))
+        .add_step(Step::uses("arduino", "setup-protoc", "v3"))
         .add_step(
             Toolchain::default()
                 .add_stable()

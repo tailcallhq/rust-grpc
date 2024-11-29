@@ -60,6 +60,6 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-    - uses: shuttle-hq/deploy-action/deploy-action@vmain
+    - uses: shuttle-hq/deploy-action/deploy-action@main
       with:
         deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
