@@ -9,7 +9,7 @@ fn generate() {
     let build = Job::new("Build and Test")
         .permissions(Permissions::default().contents(Level::Read))
         .add_step(Step::checkout())
-        .add_step(Step::uses("arduino", "setup-protoc", "3"))
+        .add_step(Step::uses("arduino", "setup-protoc", "v3"))
         .add_step(
             Toolchain::default()
                 .add_stable()
@@ -57,8 +57,8 @@ fn generate() {
         .runs_on("ubuntu-latest")
         .add_step(Step::checkout())
         .add_step(
-            Step::uses("shuttle-hq/deploy-action", "deploy-action", "main")
-                .add_with(("deploy-key", "${{ secrets.SHUTTLE_API_KEY }}")),
+            Step::uses("shuttle-hq", "deploy-action", "v2")
+                .add_with(("shuttle-api-key", "${{ secrets.SHUTTLE_API_KEY }}")),
         );
 
     Workflow::new("Build and Test")
