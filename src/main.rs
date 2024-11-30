@@ -6,19 +6,17 @@ use hyper::{
     HeaderMap,
 };
 use once_cell::sync::Lazy;
-use opentelemetry::{global, trace::TraceError, trace::TracerProvider};
+use opentelemetry::{global, trace::TraceError, trace::TracerProvider, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource, trace::Config as SdkTraceConfig,};
-use tonic::{metadata::MetadataMap, transport::{Server, Server as TonicServer}, Response, Status,};
-use tonic_tracing_opentelemetry::middleware::server;
-use tower::make::Shared;
+use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource};
+use tonic::{metadata::MetadataMap, response::Response, Status, server::Server};
+use tonic_tracing_opentelemetry::layer::OtelGrpcLayer;
 
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
 use news::{MultipleNewsId, News, NewsId, NewsList};
 use shuttle_runtime::Service;
 use tracing_subscriber::layer::SubscriberExt;
-use opentelemetry::KeyValue as OtelKeyValue;
 
 pub mod news {
     tonic::include_proto!("news"); // The package name specified in your .proto
@@ -167,11 +165,11 @@ impl NewsService for MyNewsService {
 
 static RESOURCE: Lazy<Resource> = Lazy::new(|| {
     Resource::default().merge(&Resource::new(vec![
-        OtelKeyValue::new(
+        KeyValue::new(
             opentelemetry_semantic_conventions::resource::SERVICE_NAME,
             "rust-grpc",
         ),
-        OtelKeyValue::new(
+        KeyValue::new(
             opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
             "test",
         ),
@@ -190,15 +188,13 @@ fn init_tracer() -> Result<()> {
     let otlp_exporter = opentelemetry_otlp::new_exporter()
         .tonic()
         .with_endpoint(TELEMETRY_URL)
-        .with_metadata(MetadataMap::from_iter(
-            headers.iter().map(|(k, v)| (k.clone(), v.as_bytes().to_vec()))
-        ));
+        .with_metadata(MetadataMap::from_headers(headers));
 
     let provider = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(otlp_exporter)
-        .with_trace_config(SdkTraceConfig::default().with_resource(RESOURCE.clone()))
-        .install_batch(runtime::Tokio)
+        .with_trace_config(opentelemetry_sdk::trace::config().with_resource(RESOURCE.clone()))
+        .install_batch(runtime::Tokio)?
         .provider()
         .ok_or(TraceError::Other(
             anyhow!("Failed to instantiate OTLP provider").into(),
@@ -213,7 +209,6 @@ fn init_tracer() -> Result<()> {
     let subscriber = tracing_subscriber::registry().with(trace_layer);
 
     tracing::subscriber::set_global_default(subscriber)?;
-
     global::set_tracer_provider(provider);
 
     Ok(())
@@ -232,25 +227,22 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
 
 #[async_trait::async_trait]
 impl Service for MyNewsService {
-    async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        let service = tonic_reflection::server::Builder::configure()
+    async fn bind(&mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        let reflection_service = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
             .build()
-            .unwrap();
+            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         println!("NewsService server listening on {}", addr);
 
-        let tonic_service = TonicServer::builder()
-            .layer(server::OtelGrpcLayer::default())
-            .add_service(NewsServiceServer::new(self))
-            .add_service(service)
-            .into_service();
-        let make_svc = Shared::new(tonic_service);
+        let otel_layer = OtelGrpcLayer::new();
+        let server = Server::builder()
+            .layer(otel_layer)
+            .add_service(NewsServiceServer::new(self.clone()))
+            .add_service(reflection_service)
+            .serve(addr);
 
-        let server = Server::bind(&addr).serve(make_svc);
-        server
-            .await
-            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+        server.await.map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         Ok(())
     }
