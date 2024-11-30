@@ -9,9 +9,8 @@ use once_cell::sync::Lazy;
 use opentelemetry::{global, trace::TraceError, trace::TracerProvider, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource};
-use tonic::{metadata::MetadataMap, transport::Server as TonicServer, Response, Status};
-use tonic_tracing_opentelemetry::middleware::server;
-use tower::make::Shared;
+use tonic::{metadata::MetadataMap, response::Response, Status, server::Server};
+use tonic_tracing_opentelemetry::layer::OtelGrpcLayer;
 
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
@@ -210,7 +209,6 @@ fn init_tracer() -> Result<()> {
     let subscriber = tracing_subscriber::registry().with(trace_layer);
 
     tracing::subscriber::set_global_default(subscriber)?;
-
     global::set_tracer_provider(provider);
 
     Ok(())
@@ -229,25 +227,22 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
 
 #[async_trait::async_trait]
 impl Service for MyNewsService {
-    async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        let service = tonic_reflection::server::Builder::configure()
+    async fn bind(&mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        let reflection_service = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
             .build()
-            .unwrap();
+            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         println!("NewsService server listening on {}", addr);
 
-        let tonic_service = TonicServer::builder()
-            .layer(server::OtelGrpcLayer::default())
-            .add_service(NewsServiceServer::new(self))
-            .add_service(service)
-            .into_service();
-        let make_svc = Shared::new(tonic_service);
+        let otel_layer = OtelGrpcLayer::new();
+        let server = Server::builder()
+            .layer(otel_layer)
+            .add_service(NewsServiceServer::new(self.clone()))
+            .add_service(reflection_service)
+            .serve(addr);
 
-        let server = hyper::Server::bind(&addr).serve(make_svc);
-        server
-            .await
-            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+        server.await.map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         Ok(())
     }
