@@ -9,7 +9,10 @@ message Post {
 }
 
 message Filter {
-  optional int32 userId = 1;
+  repeated int32 ids = 1;
+  optional int32 userId = 2;     
+  optional int32 start = 3;    
+  optional int32 limit = 4;  
 }
 
 message PostRequest {
@@ -24,7 +27,10 @@ message PostResponse {
   Post post = 1;
 }
 
-message DeleteResponse {}
+message DeleteResponse {
+  bool success = 1;             
+  string message = 2;  
+}
 
 service PostService {
   rpc ListPosts(Filter) returns (PostList);

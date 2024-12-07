@@ -198,6 +198,28 @@ static RESOURCE: Lazy<Resource> = Lazy::new(|| {
     ]))
 });
 
+impl MyPostService {
+    fn new() -> Self {
+        let posts = vec![
+            posts::Post {
+                id: 1,
+                user_id: 1,
+                title: "First post".into(),
+                body: "This is the first post content".into(),
+            },
+            posts::Post {
+                id: 2,
+                user_id: 1,
+                title: "Second post".into(),
+                body: "This is the second post content".into(),
+            },
+        ];
+        MyPostService {
+            posts: Arc::new(Mutex::new(posts)),
+        }
+    }
+}
+
 #[tonic::async_trait]
 impl posts::post_service_server::PostService for MyPostService {
     async fn list_posts(
@@ -206,15 +228,30 @@ impl posts::post_service_server::PostService for MyPostService {
     ) -> Result<Response<posts::PostList>, Status> {
         let filter = request.into_inner();
         let posts = self.posts.lock().unwrap();
-        let filtered = if let Some(user_id) = filter.user_id {
-            posts
-                .iter()
+        let mut filtered = posts.clone();
+
+        if !filter.ids.is_empty() {
+            filtered = filtered
+                .into_iter()
+                .filter(|p| filter.ids.contains(&p.id))
+                .collect();
+        }
+
+        if let Some(user_id) = filter.user_id {
+            filtered = filtered
+                .into_iter()
                 .filter(|p| p.user_id == user_id)
-                .cloned()
-                .collect()
-        } else {
-            posts.clone()
-        };
+                .collect();
+        }
+
+        if let (Some(start), Some(limit)) = (filter.start, filter.limit) {
+            filtered = filtered
+                .into_iter()
+                .skip(start as usize)
+                .take(limit as usize)
+                .collect();
+        }
+
         Ok(Response::new(posts::PostList { posts: filtered }))
     }
 
@@ -267,9 +304,46 @@ impl posts::post_service_server::PostService for MyPostService {
         let len_before = posts.len();
         posts.retain(|p| p.id != id);
         if posts.len() < len_before {
-            Ok(Response::new(posts::DeleteResponse {}))
+            Ok(Response::new(posts::DeleteResponse {
+                success: true,
+                message: format!("Post {} successfully deleted", id),
+            }))
         } else {
-            Err(Status::not_found("Post not found"))
+            Ok(Response::new(posts::DeleteResponse {
+                success: false,
+                message: format!("Post {} not found", id),
+            }))
+        }
+    }
+}
+
+impl MyUserService {
+    fn new() -> Self {
+        let users = vec![users::User {
+            id: 1,
+            name: "Leanne Graham".to_string(),
+            username: "Bret".to_string(),
+            email: "Sincere@april.biz".to_string(),
+            address: Some(users::Address {
+                street: "Kulas Light".to_string(),
+                suite: "Apt. 556".to_string(),
+                city: "Gwenborough".to_string(),
+                zipcode: "92998-3874".to_string(),
+                geo: Some(users::Geo {
+                    lat: "-37.3159".to_string(),
+                    lng: "81.1496".to_string(),
+                }),
+            }),
+            phone: "1-770-736-8031 x56442".to_string(),
+            website: "hildegard.org".to_string(),
+            company: Some(users::Company {
+                name: "Romaguera-Crona".to_string(),
+                catch_phrase: "Multi-layered client-server neural-net".to_string(),
+                bs: "harness real-time e-markets".to_string(),
+            }),
+        }];
+        MyUserService {
+            users: Arc::new(Mutex::new(users)),
         }
     }
 }
@@ -283,15 +357,33 @@ impl users::user_service_server::UserService for MyUserService {
         let filter = request.into_inner();
         let users = self.users.lock().unwrap();
 
-        let filtered = if !filter.ids.is_empty() {
-            users
-                .iter()
+        let mut filtered = users.clone();
+
+        if !filter.ids.is_empty() {
+            filtered = filtered
+                .into_iter()
                 .filter(|u| filter.ids.contains(&u.id))
-                .cloned()
-                .collect()
-        } else {
-            users.clone()
-        };
+                .collect();
+        }
+
+        if let Some(username) = filter.username {
+            filtered = filtered
+                .into_iter()
+                .filter(|u| u.username == username)
+                .collect();
+        }
+
+        if let Some(email) = filter.email {
+            filtered = filtered.into_iter().filter(|u| u.email == email).collect();
+        }
+
+        if let (Some(start), Some(limit)) = (filter.start, filter.limit) {
+            filtered = filtered
+                .into_iter()
+                .skip(start as usize)
+                .take(limit as usize)
+                .collect();
+        }
 
         Ok(Response::new(users::UserList { users: filtered }))
     }
@@ -419,9 +511,15 @@ impl users::user_service_server::UserService for MyUserService {
         users.retain(|u| u.id != id);
 
         if users.len() < len_before {
-            Ok(Response::new(users::DeleteResponse {}))
+            Ok(Response::new(users::DeleteResponse {
+                success: true,
+                message: format!("User {} successfully deleted", id),
+            }))
         } else {
-            Err(Status::not_found("User not found"))
+            Ok(Response::new(users::DeleteResponse {
+                success: false,
+                message: format!("User {} not found", id),
+            }))
         }
     }
 }
@@ -480,8 +578,8 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
 
     let composite_service = CompositeService {
         news_service: MyNewsService::new(),
-        post_service: MyPostService::default(),
-        user_service: MyUserService::default(),
+        post_service: MyPostService::new(),
+        user_service: MyUserService::new(),
     };
 
     Ok(composite_service)

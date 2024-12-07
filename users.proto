@@ -25,14 +25,18 @@ message User {
   string name = 2;
   string username = 3;
   string email = 4;
-  Address address = 5;
+  optional Address address = 5;
   string phone = 6;
   string website = 7;
-  Company company = 8;
+  optional Company company = 8;
 }
 
 message Filter {
   repeated int32 ids = 1;
+  optional string username = 2;  
+  optional string email = 3;  
+  optional int32 start = 4; 
+  optional int32 limit = 5;
 }
 
 message UserRequest {
@@ -52,7 +56,10 @@ message PatchUserRequest {
   User user = 2;
 }
 
-message DeleteResponse {}
+message DeleteResponse {
+  bool success = 1;             
+  string message = 2;
+}
 
 service UserService {
   rpc ListUsers(Filter) returns (UserList);
