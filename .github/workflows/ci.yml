@@ -21,15 +21,15 @@ env:
 on:
   pull_request:
     types:
-    - opened
-    - synchronize
-    - reopened
-    - closed
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
-    - main
+      - main
   push:
     branches:
-    - main
+      - main
 jobs:
   build:
     name: Build and Test
@@ -37,22 +37,20 @@ jobs:
     permissions:
       contents: read
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-    - uses: arduino/setup-protoc@v3
-    - name: Setup Rust Toolchain
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable, nightly
-        components: clippy, rustfmt
-    - name: Install protobuf compiler
-      run: cargo test sudo apt-get update && sudo apt-get install -y protobuf-compiler
-    - name: Cargo Test
-      run: cargo test --all-features --workspace
-    - name: Cargo Fmt
-      run: cargo +nightly fmt --check
-    - name: Cargo Clippy
-      run: cargo +nightly clippy --all-features --workspace -- -D warnings
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - uses: arduino/setup-protoc@v3
+      - name: Setup Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable, nightly
+          components: clippy, rustfmt
+      - name: Cargo Test
+        run: cargo test --all-features --workspace
+      - name: Cargo Fmt
+        run: cargo +nightly fmt --check
+      - name: Cargo Clippy
+        run: cargo +nightly clippy --all-features --workspace -- -D warnings
   deploy:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     name: Deploy to Shuttle
@@ -60,8 +58,8 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-    - uses: shuttle-hq/deploy-action/deploy-action@vmain
-      with:
-        deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - uses: shuttle-hq/deploy-action/deploy-action@vmain
+        with:
+          deploy-key: ${{ secrets.SHUTTLE_API_KEY }}
