@@ -1,0 +1,70 @@
+syntax = "proto3";
+package users;
+
+message Address {
+  string street = 1;
+  string suite = 2;
+  string city = 3;
+  string zipcode = 4;
+  Geo geo = 5;
+}
+
+message Geo {
+  string lat = 1;
+  string lng = 2;
+}
+
+message Company {
+  string name = 1;
+  string catchPhrase = 2;
+  string bs = 3;
+}
+
+message User {
+  int32 id = 1;
+  string name = 2;
+  string username = 3;
+  string email = 4;
+  optional Address address = 5;
+  string phone = 6;
+  string website = 7;
+  optional Company company = 8;
+}
+
+message Filter {
+  repeated int32 ids = 1;
+  optional string username = 2;  
+  optional string email = 3;  
+  optional int32 start = 4; 
+  optional int32 limit = 5;
+}
+
+message UserRequest {
+  int32 id = 1;
+}
+
+message UserList {
+  repeated User users = 1;
+}
+
+message UserResponse {
+  User user = 1;
+}
+
+message PatchUserRequest {
+  int32 id = 1;
+  User user = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;             
+  string message = 2;
+}
+
+service UserService {
+  rpc ListUsers(Filter) returns (UserList);
+  rpc GetUser(UserRequest) returns (User);
+  rpc CreateUser(User) returns (UserResponse);
+  rpc PatchUser(PatchUserRequest) returns (UserResponse);
+  rpc DeleteUser(UserRequest) returns (DeleteResponse);
+}
