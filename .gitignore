@@ -4,3 +4,5 @@ target/
 /target
 .shuttle*
 Secrets*.toml
+config.bat
+node_modules

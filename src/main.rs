@@ -463,3 +463,60 @@ impl Service for MyGrpcService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_list_posts() {
+        let service = MyGrpcService::new();
+        let request = tonic::Request::new(PostFilter { user_id: None });
+        let response = service.list_posts(request).await.unwrap();
+        let posts = response.into_inner();
+        assert_eq!(posts.posts.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_post() {
+        let service = MyGrpcService::new();
+        let request = tonic::Request::new(PostRequest { id: 1 });
+        let response = service.get_post(request).await.unwrap();
+        let post = response.into_inner();
+        assert_eq!(post.title, "Post 1");
+    }
+
+    #[tokio::test]
+    async fn test_create_post() {
+        let service = MyGrpcService::new();
+        let new_post = Post {
+            user_id: 1,
+            id: 0, // ID should be ignored/overwritten
+            title: "New Post".into(),
+            body: "New Body".into(),
+        };
+        let request = tonic::Request::new(new_post);
+        let response = service.create_post(request).await.unwrap();
+        let post = response.into_inner().post.unwrap();
+        assert_eq!(post.title, "New Post");
+        assert_eq!(post.id, 3); // Should be 3 as there are 2 existing posts
+    }
+
+    #[tokio::test]
+    async fn test_list_users() {
+        let service = MyGrpcService::new();
+        let request = tonic::Request::new(UserFilter { id: vec![] });
+        let response = service.list_users(request).await.unwrap();
+        let users = response.into_inner();
+        assert_eq!(users.users.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_user() {
+        let service = MyGrpcService::new();
+        let request = tonic::Request::new(UserRequest { id: 1 });
+        let response = service.get_user(request).await.unwrap();
+        let user = response.into_inner();
+        assert_eq!(user.name, "Leanne Graham");
+    }
+}
