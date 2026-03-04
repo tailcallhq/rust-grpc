@@ -1,0 +1,48 @@
+syntax = "proto3";
+package users;
+
+import "google/protobuf/empty.proto";
+
+// Generic filter accepting repeated ids
+message Filter {
+  repeated int32 id = 1;
+}
+
+// A user record
+message User {
+  int32 id = 1;
+  string name = 2;
+  string username = 3;
+  string email = 4;
+  string phone = 5;
+  string website = 6;
+}
+
+// Response list of users
+message UserList {
+  repeated User users = 1;
+}
+
+// Request for single user by id
+message UserRequest {
+  int32 id = 1;
+}
+
+// For CreateUser and PatchUser responses
+message UserResponse {
+  User user = 1;
+}
+
+// Partial update for PatchUser
+message PatchUserRequest {
+  User user = 1;
+  repeated string update_fields = 2;
+}
+
+service UserService {
+  rpc ListUsers(Filter) returns (UserList);
+  rpc GetUser(UserRequest) returns (User);
+  rpc CreateUser(User) returns (UserResponse);
+  rpc PatchUser(PatchUserRequest) returns (UserResponse);
+  rpc DeleteUser(UserRequest) returns (DeleteResponse);
+}

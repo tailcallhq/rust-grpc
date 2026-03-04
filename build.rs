@@ -9,6 +9,10 @@ fn main() {
 
     tonic_build::configure()
         .file_descriptor_set_path(out_dir.join("news_descriptor.bin"))
-        .compile(&["news.proto"], &["proto"])
+        .compile(&["news.proto", "proto/posts.proto", "proto/users.proto"], &[".", "proto"])
         .unwrap();
+
+    // Watch for changes in the new proto files
+    println!("cargo:rerun-if-changed=proto/posts.proto");
+    println!("cargo:rerun-if-changed=proto/users.proto");
 }

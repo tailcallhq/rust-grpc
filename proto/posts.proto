@@ -1,0 +1,44 @@
+syntax = "proto3";
+package posts;
+
+import "google/protobuf/empty.proto";
+
+// Filter for listing posts, supports filtering by userId
+message Filter {
+  int32 user_id = 1;
+}
+
+// A blog post
+message Post {
+  int32 user_id = 1;
+  int32 id = 2;
+  string title = 3;
+  string body = 4;
+}
+
+// Response list of posts
+message PostList {
+  repeated Post posts = 1;
+}
+
+// Request for a single post by id
+message PostRequest {
+  int32 id = 1;
+}
+
+// Response wrapping a single Post
+message PostResponse {
+  Post post = 1;
+}
+
+// Empty response for deletes
+message DeleteResponse {
+}
+
+service PostService {
+  rpc ListPosts(Filter) returns (PostList);
+  rpc GetPost(PostRequest) returns (Post);
+  rpc CreatePost(Post) returns (PostResponse);
+  rpc UpdatePost(Post) returns (PostResponse);
+  rpc DeletePost(PostRequest) returns (DeleteResponse);
+}
