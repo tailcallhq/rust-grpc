@@ -1870,7 +1870,7 @@ dependencies = [
  "tonic-build",
  "tonic-reflection",
  "tonic-tracing-opentelemetry",
- "tower 0.4.13",
+ "tower 0.5.1",
  "tracing",
  "tracing-opentelemetry 0.23.0",
  "tracing-subscriber",
