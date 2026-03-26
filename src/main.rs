@@ -16,6 +16,9 @@ use tower::make::Shared;
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
 use news::{MultipleNewsId, News, NewsId, NewsList};
+use posts::post_service_server::PostService;
+use posts::post_service_server::PostServiceServer;
+use posts::{DeleteResponse, Filter, Post, PostList, PostRequest, PostResponse};
 use shuttle_runtime::Service;
 use tracing_subscriber::layer::SubscriberExt;
 
