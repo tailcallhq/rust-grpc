@@ -9,6 +9,6 @@ fn main() {
 
     tonic_build::configure()
         .file_descriptor_set_path(out_dir.join("news_descriptor.bin"))
-        .compile(&["news.proto"], &["proto"])
+        .compile_protos(&["news.proto"], &["proto"])
         .unwrap();
 }
