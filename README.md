@@ -17,7 +17,29 @@ Before you begin, ensure you have installed:
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Shuttle CLI](https://docs.shuttle.rs/getting-started/installation)
 
+The protobuf compiler is provided by `protoc-bin-vendored`, so contributors do not need to
+install a platform-specific `protoc` package.
+
 ## Installation
+
+Verify the generated protobuf code, service behavior, and CI workflow with:
+
+```bash
+cargo test --all-features --workspace
+```
+
+## Dependency baseline
+
+The service uses one compatible current generation for each interconnected runtime stack:
+
+| Stack | Previous baseline | Current baseline | Migration |
+| --- | --- | --- | --- |
+| gRPC/protobuf | Tonic 0.11, Prost 0.12 | Tonic 0.14, Prost 0.14 | Uses the split `tonic-prost` runtime and `tonic-prost-build` generator APIs. |
+| HTTP/server | Hyper 0.14, Tower 0.4 as direct dependencies | Tonic 0.14 transport | Removes the obsolete custom Hyper server adapter and serves the Tonic router directly. |
+| Telemetry | OpenTelemetry 0.22 | OpenTelemetry 0.32 | Uses the typed OTLP exporter and `SdkTracerProvider` builders. |
+| Deployment | Shuttle Runtime 0.49 | Shuttle Runtime 0.57 | Keeps the `Service` integration on the current Shuttle interface. |
+| CI generation | gh-workflow 0.5 | gh-workflow 0.8 | Regenerates the workflow with the current typed step API and `actions/checkout@v5`. |
+| Protobuf compiler | System `protoc` | `protoc-bin-vendored` 3.2 | Makes local and CI builds reproducible without an extra package-manager step. |
 
 ## Running the Server Locally
 

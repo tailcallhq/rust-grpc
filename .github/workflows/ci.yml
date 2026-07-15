@@ -17,8 +17,8 @@
 
 name: Build and Test
 env:
-  RUSTFLAGS: -Dwarnings
-on:
+  RUSTFLAGS: '-Dwarnings'
+'on':
   pull_request:
     types:
     - opened
@@ -38,8 +38,7 @@ jobs:
       contents: read
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4
-    - uses: arduino/setup-protoc@v3
+      uses: actions/checkout@v5
     - name: Setup Rust Toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -59,8 +58,9 @@ jobs:
       contents: write
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4
-    - uses: shuttle-hq/deploy-action@v2
+      uses: actions/checkout@v5
+    - name: Deploy to Shuttle
+      uses: shuttle-hq/deploy-action@v2
       with:
         shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
         project-id: proj_01JDWN5ZZV23FVGYHMCFHM8390
