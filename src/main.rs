@@ -1,17 +1,16 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Result};
-use hyper::{
-    header::{HeaderName, HeaderValue},
-    HeaderMap,
-};
+use anyhow::Result;
 use once_cell::sync::Lazy;
-use opentelemetry::{global, trace::TraceError, trace::TracerProvider, KeyValue};
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource};
-use tonic::{metadata::MetadataMap, transport::Server as TonicServer, Response, Status};
+use opentelemetry::{global, trace::TracerProvider, KeyValue};
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
+use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider, Resource};
+use tonic::{
+    metadata::{MetadataMap, MetadataValue},
+    transport::Server as TonicServer,
+    Response, Status,
+};
 use tonic_tracing_opentelemetry::middleware::server;
-use tower::make::Shared;
 
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
@@ -165,41 +164,40 @@ impl NewsService for MyNewsService {
 }
 
 static RESOURCE: Lazy<Resource> = Lazy::new(|| {
-    Resource::default().merge(&Resource::new(vec![
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-            "rust-grpc",
-        ),
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
-            "test",
-        ),
-    ]))
+    Resource::builder()
+        .with_attributes([
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                "rust-grpc",
+            ),
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                env!("CARGO_PKG_VERSION"),
+            ),
+        ])
+        .build()
 });
 
 fn init_tracer() -> Result<()> {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     static TELEMETRY_URL: &str = "https://api.honeycomb.io:443";
-    let headers = HeaderMap::from_iter([(
-        HeaderName::from_static("x-honeycomb-team"),
-        HeaderValue::from_str(&std::env::var("HONEYCOMB_API_KEY")?)?,
-    )]);
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "x-honeycomb-team",
+        MetadataValue::try_from(std::env::var("HONEYCOMB_API_KEY")?)?,
+    );
 
-    let otlp_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
         .with_endpoint(TELEMETRY_URL)
-        .with_metadata(MetadataMap::from_headers(headers));
+        .with_metadata(metadata)
+        .build()?;
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(otlp_exporter)
-        .with_trace_config(opentelemetry_sdk::trace::config().with_resource(RESOURCE.clone()))
-        .install_batch(runtime::Tokio)?
-        .provider()
-        .ok_or(TraceError::Other(
-            anyhow!("Failed to instantiate OTLP provider").into(),
-        ))?;
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(RESOURCE.clone())
+        .build();
 
     let tracer = provider.tracer("tracing");
     let trace_layer = tracing_opentelemetry::layer()
@@ -232,23 +230,98 @@ impl Service for MyNewsService {
     async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
         let service = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
-            .build()
+            .build_v1()
             .unwrap();
 
         println!("NewsService server listening on {}", addr);
 
-        let tonic_service = TonicServer::builder()
+        TonicServer::builder()
             .layer(server::OtelGrpcLayer::default())
             .add_service(NewsServiceServer::new(self))
             .add_service(service)
-            .into_service();
-        let make_svc = Shared::new(tonic_service);
-
-        let server = hyper::Server::bind(&addr).serve(make_svc);
-        server
+            .serve(addr)
             .await
             .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tonic::{Code, Request};
+
+    fn news(id: i32, title: &str) -> News {
+        News {
+            id,
+            title: title.into(),
+            body: format!("{title} body"),
+            post_image: format!("{title} image"),
+            status: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_crud_behavior_after_dependency_migration() {
+        let service = MyNewsService::new();
+
+        let initial = service
+            .get_all_news(Request::new(()))
+            .await
+            .expect("initial list should be available")
+            .into_inner();
+        assert_eq!(initial.news.len(), 5);
+
+        let selected = service
+            .get_multiple_news(Request::new(MultipleNewsId {
+                ids: vec![NewsId { id: 1 }, NewsId { id: 3 }, NewsId { id: 999 }],
+            }))
+            .await
+            .expect("batch lookup should succeed")
+            .into_inner();
+        assert_eq!(
+            selected.news.iter().map(|item| item.id).collect::<Vec<_>>(),
+            [1, 3]
+        );
+
+        let created = service
+            .add_news(Request::new(news(99, "Created")))
+            .await
+            .expect("create should succeed")
+            .into_inner();
+        assert_eq!(created.id, 6);
+
+        let updated = service
+            .edit_news(Request::new(News {
+                title: "Updated".into(),
+                ..created
+            }))
+            .await
+            .expect("edit should succeed")
+            .into_inner();
+        assert_eq!(updated.title, "Updated");
+
+        service
+            .delete_news(Request::new(NewsId { id: updated.id }))
+            .await
+            .expect("delete should succeed");
+        let deleted = service
+            .get_news(Request::new(NewsId { id: updated.id }))
+            .await
+            .expect_err("deleted item should no longer be returned");
+        assert_eq!(deleted.code(), Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn returns_not_found_for_unknown_news() {
+        let service = MyNewsService::new();
+
+        let error = service
+            .get_news(Request::new(NewsId { id: i32::MAX }))
+            .await
+            .expect_err("unknown news should return a gRPC not-found status");
+
+        assert_eq!(error.code(), Code::NotFound);
     }
 }
