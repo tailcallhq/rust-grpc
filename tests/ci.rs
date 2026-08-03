@@ -8,8 +8,8 @@ fn generate() {
 
     let build = Job::new("Build and Test")
         .permissions(Permissions::default().contents(Level::Read))
-        .add_step(Step::checkout())
-        .add_step(Step::uses("arduino", "setup-protoc", "v3"))
+        .add_step(Step::new("Checkout Code").uses("actions", "checkout", "v6"))
+        .add_step(Step::new("Setup protoc").uses("arduino", "setup-protoc", "v3"))
         .add_step(
             Toolchain::default()
                 .add_stable()
@@ -55,9 +55,10 @@ fn generate() {
                 .and(Context::github().ref_().eq("refs/heads/main".into())),
         )
         .runs_on("ubuntu-latest")
-        .add_step(Step::checkout())
+        .add_step(Step::new("Checkout Code").uses("actions", "checkout", "v6"))
         .add_step(
-            Step::uses("shuttle-hq", "deploy-action", "v2")
+            Step::new("Deploy to Shuttle")
+                .uses("shuttle-hq", "deploy-action", "v2")
                 .add_with(("shuttle-api-key", "${{ secrets.SHUTTLE_API_KEY }}"))
                 .add_with(("project-id", "proj_01JDWN5ZZV23FVGYHMCFHM8390")),
         );
