@@ -1,17 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
-use anyhow::{anyhow, Result};
-use hyper::{
-    header::{HeaderName, HeaderValue},
-    HeaderMap,
-};
-use once_cell::sync::Lazy;
-use opentelemetry::{global, trace::TraceError, trace::TracerProvider, KeyValue};
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource};
+use anyhow::Result;
+use opentelemetry::{global, trace::TracerProvider, KeyValue};
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
+use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider, Resource};
 use tonic::{metadata::MetadataMap, transport::Server as TonicServer, Response, Status};
 use tonic_tracing_opentelemetry::middleware::server;
-use tower::make::Shared;
 
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
@@ -20,14 +14,14 @@ use shuttle_runtime::Service;
 use tracing_subscriber::layer::SubscriberExt;
 
 pub mod news {
-    tonic::include_proto!("news"); // The package name specified in your .proto
+    tonic::include_proto!("news");
     pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
         tonic::include_file_descriptor_set!("news_descriptor");
 }
 
 #[derive(Debug, Default)]
 pub struct MyNewsService {
-    news: Arc<Mutex<Vec<News>>>, // Using a simple vector to store news items in memory
+    news: Arc<Mutex<Vec<News>>>,
 }
 
 impl MyNewsService {
@@ -82,8 +76,7 @@ impl NewsService for MyNewsService {
         _request: tonic::Request<()>,
     ) -> std::result::Result<Response<NewsList>, Status> {
         let lock = self.news.lock().unwrap();
-        let reply = NewsList { news: lock.clone() };
-        Ok(Response::new(reply))
+        Ok(Response::new(NewsList { news: lock.clone() }))
     }
 
     async fn get_news(
@@ -92,11 +85,11 @@ impl NewsService for MyNewsService {
     ) -> std::result::Result<Response<News>, Status> {
         let id = request.into_inner().id;
         let lock = self.news.lock().unwrap();
-        let item = lock.iter().find(|&n| n.id == id).cloned();
-        match item {
-            Some(news) => Ok(Response::new(news)),
-            None => Err(Status::not_found("News not found")),
-        }
+        lock.iter()
+            .find(|news| news.id == id)
+            .cloned()
+            .map(Response::new)
+            .ok_or_else(|| Status::not_found("News not found"))
     }
 
     async fn get_multiple_news(
@@ -110,12 +103,12 @@ impl NewsService for MyNewsService {
             .map(|id| id.id)
             .collect::<Vec<_>>();
         let lock = self.news.lock().unwrap();
-        let news_items: Vec<News> = lock
+        let news = lock
             .iter()
-            .filter(|n| ids.contains(&n.id))
+            .filter(|item| ids.contains(&item.id))
             .cloned()
             .collect();
-        Ok(Response::new(NewsList { news: news_items }))
+        Ok(Response::new(NewsList { news }))
     }
 
     async fn delete_news(
@@ -126,13 +119,10 @@ impl NewsService for MyNewsService {
         let mut lock = self.news.lock().unwrap();
         let len_before = lock.len();
         lock.retain(|news| news.id != id);
-        let len_after = lock.len();
-
-        if len_before == len_after {
+        if lock.len() == len_before {
             Err(Status::not_found("News not found"))
         } else {
-            let x = Response::new(());
-            Ok(x)
+            Ok(Response::new(()))
         }
     }
 
@@ -140,15 +130,18 @@ impl NewsService for MyNewsService {
         &self,
         request: tonic::Request<News>,
     ) -> std::result::Result<Response<News>, Status> {
-        let new_news = request.into_inner();
+        let replacement = request.into_inner();
         let mut lock = self.news.lock().unwrap();
-        if let Some(news) = lock.iter_mut().find(|n| n.id == new_news.id) {
-            news.title = new_news.title.clone();
-            news.body = new_news.body.clone();
-            news.post_image = new_news.post_image.clone();
-            return Ok(Response::new(new_news));
-        }
-        Err(Status::not_found("News not found"))
+        let stored = lock
+            .iter_mut()
+            .find(|news| news.id == replacement.id)
+            .ok_or_else(|| Status::not_found("News not found"))?;
+
+        stored.title = replacement.title.clone();
+        stored.body = replacement.body.clone();
+        stored.post_image = replacement.post_image.clone();
+        stored.status = replacement.status;
+        Ok(Response::new(replacement))
     }
 
     async fn add_news(
@@ -157,60 +150,47 @@ impl NewsService for MyNewsService {
     ) -> std::result::Result<Response<News>, Status> {
         let mut news = request.into_inner();
         let mut lock = self.news.lock().unwrap();
-        let new_id = lock.iter().map(|n| n.id).max().unwrap_or(0) + 1; // Simple ID generation
-        news.id = new_id;
+        news.id = lock.iter().map(|item| item.id).max().unwrap_or(0) + 1;
         lock.push(news.clone());
         Ok(Response::new(news))
     }
 }
 
-static RESOURCE: Lazy<Resource> = Lazy::new(|| {
-    Resource::default().merge(&Resource::new(vec![
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-            "rust-grpc",
-        ),
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
-            "test",
-        ),
-    ]))
+static RESOURCE: LazyLock<Resource> = LazyLock::new(|| {
+    Resource::builder()
+        .with_attributes([
+            KeyValue::new("service.name", "rust-grpc"),
+            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+        ])
+        .build()
 });
 
 fn init_tracer() -> Result<()> {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    static TELEMETRY_URL: &str = "https://api.honeycomb.io:443";
-    let headers = HeaderMap::from_iter([(
-        HeaderName::from_static("x-honeycomb-team"),
-        HeaderValue::from_str(&std::env::var("HONEYCOMB_API_KEY")?)?,
-    )]);
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "x-honeycomb-team",
+        std::env::var("HONEYCOMB_API_KEY")?.parse()?,
+    );
 
-    let otlp_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint(TELEMETRY_URL)
-        .with_metadata(MetadataMap::from_headers(headers));
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("https://api.honeycomb.io:443")
+        .with_metadata(metadata)
+        .build()?;
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(otlp_exporter)
-        .with_trace_config(opentelemetry_sdk::trace::config().with_resource(RESOURCE.clone()))
-        .install_batch(runtime::Tokio)?
-        .provider()
-        .ok_or(TraceError::Other(
-            anyhow!("Failed to instantiate OTLP provider").into(),
-        ))?;
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(RESOURCE.clone())
+        .build();
 
-    let tracer = provider.tracer("tracing");
+    let tracer = provider.tracer("rust-grpc");
     let trace_layer = tracing_opentelemetry::layer()
         .with_location(false)
         .with_threads(false)
         .with_tracer(tracer);
-
-    let subscriber = tracing_subscriber::registry().with(trace_layer);
-
-    tracing::subscriber::set_global_default(subscriber)?;
-
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(trace_layer))?;
     global::set_tracer_provider(provider);
 
     Ok(())
@@ -222,33 +202,133 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
         init_tracer()?;
     }
 
-    let news_service = MyNewsService::new();
-
-    Ok(news_service)
+    Ok(MyNewsService::new())
 }
 
-#[async_trait::async_trait]
+#[shuttle_runtime::async_trait]
 impl Service for MyNewsService {
-    async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        let service = tonic_reflection::server::Builder::configure()
+    async fn bind(self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        let reflection = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
-            .build()
-            .unwrap();
+            .build_v1()
+            .map_err(|error| shuttle_runtime::Error::Custom(anyhow::anyhow!(error)))?;
 
-        println!("NewsService server listening on {}", addr);
+        println!("NewsService server listening on {addr}");
 
-        let tonic_service = TonicServer::builder()
+        TonicServer::builder()
             .layer(server::OtelGrpcLayer::default())
             .add_service(NewsServiceServer::new(self))
-            .add_service(service)
-            .into_service();
-        let make_svc = Shared::new(tonic_service);
-
-        let server = hyper::Server::bind(&addr).serve(make_svc);
-        server
+            .add_service(reflection)
+            .serve(addr)
             .await
-            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+            .map_err(|error| shuttle_runtime::Error::Custom(anyhow::anyhow!(error)))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tonic::{Code, Request};
+
+    fn news(title: &str) -> News {
+        News {
+            id: 0,
+            title: title.into(),
+            body: format!("{title} body"),
+            post_image: format!("{title} image"),
+            status: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn crud_and_batch_lookup_survive_the_dependency_migration() {
+        let service = MyNewsService::new();
+
+        let initial = service
+            .get_all_news(Request::new(()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(initial.news.len(), 5);
+
+        let selected = service
+            .get_multiple_news(Request::new(MultipleNewsId {
+                ids: vec![NewsId { id: 1 }, NewsId { id: 3 }, NewsId { id: 999 }],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(
+            selected.news.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+
+        let created = service
+            .add_news(Request::new(news("Created")))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(created.id, 6);
+
+        let updated = service
+            .edit_news(Request::new(News {
+                title: "Updated".into(),
+                body: "Updated body".into(),
+                post_image: "Updated image".into(),
+                status: 2,
+                ..created
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let fetched = service
+            .get_news(Request::new(NewsId { id: updated.id }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(fetched.title, "Updated");
+        assert_eq!(fetched.body, "Updated body");
+        assert_eq!(fetched.post_image, "Updated image");
+        assert_eq!(fetched.status, 2);
+
+        service
+            .delete_news(Request::new(NewsId { id: updated.id }))
+            .await
+            .unwrap();
+        let deleted = service
+            .get_news(Request::new(NewsId { id: updated.id }))
+            .await
+            .unwrap_err();
+        assert_eq!(deleted.code(), Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn missing_records_keep_not_found_semantics() {
+        let service = MyNewsService::new();
+        let id = i32::MAX;
+
+        let get = service
+            .get_news(Request::new(NewsId { id }))
+            .await
+            .unwrap_err();
+        assert_eq!(get.code(), Code::NotFound);
+
+        let edit = service
+            .edit_news(Request::new(News {
+                id,
+                ..news("Missing")
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(edit.code(), Code::NotFound);
+
+        let delete = service
+            .delete_news(Request::new(NewsId { id }))
+            .await
+            .unwrap_err();
+        assert_eq!(delete.code(), Code::NotFound);
     }
 }
