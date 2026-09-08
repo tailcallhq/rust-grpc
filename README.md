@@ -15,6 +15,7 @@ This repository contains a gRPC-based Rust server implementing CRUD operations f
 Before you begin, ensure you have installed:
 
 - [Rust](https://www.rust-lang.org/tools/install)
+- [Protocol Buffers compiler (`protoc`)](https://github.com/protocolbuffers/protobuf/releases)
 - [Shuttle CLI](https://docs.shuttle.rs/getting-started/installation)
 
 ## Installation
