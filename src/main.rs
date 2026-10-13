@@ -1,17 +1,16 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Result};
-use hyper::{
-    header::{HeaderName, HeaderValue},
-    HeaderMap,
-};
+use anyhow::Result;
 use once_cell::sync::Lazy;
-use opentelemetry::{global, trace::TraceError, trace::TracerProvider, KeyValue};
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{propagation::TraceContextPropagator, runtime, Resource};
-use tonic::{metadata::MetadataMap, transport::Server as TonicServer, Response, Status};
+use opentelemetry::{global, trace::TracerProvider, KeyValue};
+use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
+use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider, Resource};
+use tonic::{
+    metadata::{MetadataMap, MetadataValue},
+    transport::{ClientTlsConfig, Server as TonicServer},
+    Response, Status,
+};
 use tonic_tracing_opentelemetry::middleware::server;
-use tower::make::Shared;
 
 use news::news_service_server::NewsService;
 use news::news_service_server::NewsServiceServer;
@@ -165,41 +164,36 @@ impl NewsService for MyNewsService {
 }
 
 static RESOURCE: Lazy<Resource> = Lazy::new(|| {
-    Resource::default().merge(&Resource::new(vec![
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-            "rust-grpc",
-        ),
-        KeyValue::new(
+    Resource::builder()
+        .with_service_name("rust-grpc")
+        .with_attribute(KeyValue::new(
             opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
             "test",
-        ),
-    ]))
+        ))
+        .build()
 });
 
 fn init_tracer() -> Result<()> {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     static TELEMETRY_URL: &str = "https://api.honeycomb.io:443";
-    let headers = HeaderMap::from_iter([(
-        HeaderName::from_static("x-honeycomb-team"),
-        HeaderValue::from_str(&std::env::var("HONEYCOMB_API_KEY")?)?,
-    )]);
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "x-honeycomb-team",
+        MetadataValue::try_from(std::env::var("HONEYCOMB_API_KEY")?)?,
+    );
 
-    let otlp_exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
         .with_endpoint(TELEMETRY_URL)
-        .with_metadata(MetadataMap::from_headers(headers));
+        .with_tls_config(ClientTlsConfig::new().with_native_roots())
+        .with_metadata(metadata)
+        .build()?;
 
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(otlp_exporter)
-        .with_trace_config(opentelemetry_sdk::trace::config().with_resource(RESOURCE.clone()))
-        .install_batch(runtime::Tokio)?
-        .provider()
-        .ok_or(TraceError::Other(
-            anyhow!("Failed to instantiate OTLP provider").into(),
-        ))?;
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(RESOURCE.clone())
+        .build();
 
     let tracer = provider.tracer("tracing");
     let trace_layer = tracing_opentelemetry::layer()
@@ -230,25 +224,61 @@ async fn shuttle_main() -> Result<impl Service, shuttle_runtime::Error> {
 #[async_trait::async_trait]
 impl Service for MyNewsService {
     async fn bind(mut self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        let service = tonic_reflection::server::Builder::configure()
+        let reflection = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
-            .build()
-            .unwrap();
+            .build_v1()
+            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
+        let reflection_v1alpha = tonic_reflection::server::Builder::configure()
+            .register_encoded_file_descriptor_set(news::FILE_DESCRIPTOR_SET)
+            .build_v1alpha()
+            .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         println!("NewsService server listening on {}", addr);
 
-        let tonic_service = TonicServer::builder()
+        TonicServer::builder()
             .layer(server::OtelGrpcLayer::default())
             .add_service(NewsServiceServer::new(self))
-            .add_service(service)
-            .into_service();
-        let make_svc = Shared::new(tonic_service);
-
-        let server = hyper::Server::bind(&addr).serve(make_svc);
-        server
+            .add_service(reflection)
+            .add_service(reflection_v1alpha)
+            .serve(addr)
             .await
             .map_err(|e| shuttle_runtime::Error::Custom(anyhow::anyhow!(e)))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use news::news_service_client::NewsServiceClient;
+
+    #[tokio::test]
+    async fn serves_news_over_grpc() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        tokio::spawn(MyNewsService::new().bind(addr));
+
+        let mut client = loop {
+            match NewsServiceClient::connect(format!("http://{addr}")).await {
+                Ok(client) => break client,
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(50)).await,
+            }
+        };
+
+        let all = client.get_all_news(()).await.unwrap().into_inner();
+        assert_eq!(all.news.len(), 5);
+
+        let one = client
+            .get_news(NewsId { id: 2 })
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(one.title, "Note 2");
+
+        let missing = client.get_news(NewsId { id: 42 }).await.unwrap_err();
+        assert_eq!(missing.code(), tonic::Code::NotFound);
     }
 }
