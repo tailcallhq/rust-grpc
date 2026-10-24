@@ -37,6 +37,7 @@ async-trait = "0.1"
 [build-dependencies]
 gh-workflow = "0.5.1"
 tonic-build = "0.11.0"
+protox = "0.7.1"
 
 [dev-dependencies]
 gh-workflow = "0.5.1"
