@@ -1,0 +1,84 @@
+$ rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+Exit status: 0
+
+$ cargo test --locked --all-features --workspace
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.46
+   Compiling rustls-webpki v0.103.16
+   Compiling tokio-rustls v0.26.6
+   Compiling tungstenite v0.27.0
+   Compiling tonic v0.14.6
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.12.28
+   Compiling tokio-tungstenite v0.27.0
+   Compiling reqwest-middleware v0.4.2
+   Compiling tonic-prost v0.14.6
+   Compiling tonic-types v0.14.6
+   Compiling tonic-tracing-opentelemetry v0.42.1
+   Compiling shuttle-api-client v0.57.0
+   Compiling opentelemetry-proto v0.33.1
+   Compiling tonic-reflection v0.14.6
+   Compiling shuttle-runtime v0.57.0
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling rust-grpc v0.1.0 (<workspace>/work/tailcall-rust-grpc)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.50s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/debug/deps/rust_grpc-356173ad3bd2c3e1)
+
+running 4 tests
+test tests::honeycomb_metadata_is_preserved_and_invalid_values_are_rejected ... ok
+test tests::batch_lookup_keeps_storage_order_and_omits_missing_or_duplicate_ids ... ok
+test tests::reflection_still_lists_news_and_returns_its_descriptor ... ok
+test tests::news_crud_survives_transport_upgrade ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/ci.rs (target/debug/deps/ci-1f6832af1b3ad06d)
+
+running 1 test
+test generate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Exit status: 0
+
+$ cargo clippy --locked --all-targets --all-features --workspace -- -D warnings
+    Checking ring v0.17.14
+   Compiling rust-grpc v0.1.0 (<workspace>/work/tailcall-rust-grpc)
+    Checking rustls-webpki v0.103.16
+    Checking rustls v0.23.46
+    Checking tokio-rustls v0.26.6
+    Checking tungstenite v0.27.0
+    Checking tonic v0.14.6
+    Checking hyper-rustls v0.27.10
+    Checking reqwest v0.12.28
+    Checking tokio-tungstenite v0.27.0
+    Checking reqwest-middleware v0.4.2
+    Checking shuttle-api-client v0.57.0
+    Checking tonic-prost v0.14.6
+    Checking tonic-types v0.14.6
+    Checking tonic-tracing-opentelemetry v0.42.1
+    Checking opentelemetry-proto v0.33.1
+    Checking tonic-reflection v0.14.6
+    Checking shuttle-runtime v0.57.0
+    Checking opentelemetry-otlp v0.33.1
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.35s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+Exit status: 0
+
+$ CI=true cargo test --locked --test ci
+   Compiling rust-grpc v0.1.0 (<workspace>/work/tailcall-rust-grpc)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.23s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests/ci.rs (target/debug/deps/ci-0b75e90a6fb0f521)
+
+running 1 test
+test generate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Exit status: 0
